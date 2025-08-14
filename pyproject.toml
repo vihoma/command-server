@@ -4,7 +4,8 @@ version = "0.1.0"
 description = "A command server for the bot"
 authors = [
     {name = "Lord Sohron",email = "29570082+vihoma@users.noreply.github.com"},
-    {name = "gpt-oss-120b"}
+    {name = "Llama.cpp with gpt-oss-120b"},
+    {name = "Aider with DeepSeek-R1"}
 ]
 readme = "README.md"
 requires-python = ">=3.9"
@@ -20,6 +21,15 @@ packages = [
 ]
 
 
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.1"
+rich = "^14.1.0"
+
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+
+[tool.poetry.scripts]
+command-server = "command_server.command_server:main"
+command-client = "command_client.command_client:main"
