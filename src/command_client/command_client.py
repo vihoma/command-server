@@ -30,21 +30,44 @@ class ClientStats:
     """Collect simple client‑side counters."""
 
     def __init__(self) -> None:
+        """Initialise all counters to zero."""
         self.sent_commands = 0
         self.received_responses = 0
         self.errors = 0
 
     def snapshot(self) -> tuple[int, int, int]:
+        """
+        Return a snapshot of the current counters.
+
+        Returns
+        -------
+        tuple[int, int, int]
+            ``(sent_commands, received_responses, errors)``
+        """
         return self.sent_commands, self.received_responses, self.errors
 
 
 class CommandClient:
     """Encapsulates the socket connection and command handling."""
 
-    def __init__(self,
-                 host: str = "127.0.0.1",
-                 port: int = 666,
-                 timeout: float = 5.0) -> None:
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 666,
+        timeout: float = 5.0,
+    ) -> None:
+        """
+        Initialise a client ready to connect to the server.
+
+        Parameters
+        ----------
+        host:
+            IP address or hostname of the server (default ``127.0.0.1``).
+        port:
+            TCP port on which the server is listening (default ``666``).
+        timeout:
+            Connection timeout in seconds (default ``5.0``).
+        """
         self.host = host
         self.port = port
         self.timeout = timeout
@@ -143,14 +166,26 @@ class ClientTUI:
     EXIT_CMDS = {"quit", "exit"}
 
     def __init__(self, client: CommandClient) -> None:
+        """
+        Initialise the TUI and start a key‑listener for future shortcuts.
+
+        Parameters
+        ----------
+        client:
+            The :class:`CommandClient` instance used to communicate with the server.
+        """
         self.client = client
         self._key_listener = keyboard.Listener(on_press=self._on_key)
         self._key_listener.start()
 
     def run(self) -> None:
         """Main input loop."""
-        console.print(Panel("Command Client – type commands, 'quit' to exit",
-                            style="bold cyan"))
+        console.print(
+            Panel(
+                "Command Client – type commands, 'quit' or 'exit' to exit",
+                style="bold cyan",
+            )
+        )
         while True:
             try:
                 cmd = Prompt.ask("[bold green]>>>[/]")
@@ -173,6 +208,7 @@ class ClientTUI:
 
 
 def main() -> None:
+    """Entry point for the command‑line client."""
     client = CommandClient()
     if not client.connect():
         sys.exit(1)
