@@ -236,14 +236,14 @@ class ServerTUI:
 class CommandServer:
     """Main server object – accepts connections and spawns handlers."""
 
-    def __init__(self, host: str = "0.0.0.0", port: int = 666) -> None:
+    def __init__(self, host: str = "127.0.0.1", port: int = 666) -> None:
         """
         Initialise the server with the given host and port.
 
         Parameters
         ----------
         host:
-            Interface address to bind to (default ``0.0.0.0``).
+            Interface address to bind to (default ``127.0.0.1``).
         port:
             TCP port on which the server listens (default ``666``).
         """
