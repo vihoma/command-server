@@ -12,11 +12,14 @@ from __future__ import annotations
 import socket
 import sys
 import threading
-from typing import Optional
+import time
+from typing import Callable, Optional
 
 from rich.console import Console
+from rich.layout import Layout
+from rich.live import Live
 from rich.panel import Panel
-from rich.prompt import Prompt
+from rich.text import Text
 
 from pynput import keyboard
 
@@ -77,6 +80,7 @@ class CommandClient:
         self._running = threading.Event()
         self._running.set()
         self._recv_buffer = ""
+        self.output_handler: Optional[Callable[[str], None]] = None
 
     def connect(self) -> bool:
         """Attempt to connect to the server – returns True on success."""
@@ -149,25 +153,17 @@ class CommandClient:
 
     def _handle_line(self, line: str) -> None:
         """Process a single line received from the server."""
-        if line.startswith("STATS:"):
-            console.print(Panel(line[6:], title="Server Statistics"))
-        elif line.startswith("STDOUT:"):
-            console.print(Panel(line[7:], title="STDOUT"))
-        elif line.startswith("STDERR:"):
-            console.print(Panel(line[7:], title="STDERR", style="red"))
-        else:
-            console.print(Panel(line, title="Message"))
+        if self.output_handler:
+            self.output_handler(line + "\n")
         self.stats.received_responses += 1
 
 
-class ClientTUI:
-    """Rich based UI – reads user input and forwards to the server."""
-
-    EXIT_CMDS = {"quit", "exit"}
+class TerminalClient:
+    """Rich based terminal UI for the client."""
 
     def __init__(self, client: CommandClient) -> None:
         """
-        Initialise the TUI and start a key‑listener for future shortcuts.
+        Initialise the terminal UI.
 
         Parameters
         ----------
@@ -175,45 +171,85 @@ class ClientTUI:
             The :class:`CommandClient` instance used to communicate with the server.
         """
         self.client = client
-        self._key_listener = keyboard.Listener(on_press=self._on_key)
-        self._key_listener.start()
+        self.input_buffer = ""
+        self.output_buffer = Text()
+        self.layout = Layout()
+        self.layout.split(
+            Layout(name="output", ratio=8),
+            Layout(name="input", size=3),
+        )
+        self.key_listener = keyboard.Listener(on_press=self._on_key)
+        self.key_listener.start()
+        self.running = True
 
     def run(self) -> None:
-        """Main input loop."""
+        """Main terminal loop."""
         console.print(
             Panel(
-                "Command Client – type commands, 'quit' or 'exit' to exit",
+                "Network Terminal Client - Type commands, ESC or Ctrl+C to exit",
                 style="bold cyan",
             )
         )
-        while True:
-            try:
-                cmd = Prompt.ask("[bold green]>>>[/]")
-            except (KeyboardInterrupt, EOFError):
-                console.log("[red]User interrupt – exiting[/]")
-                break
-
-            if cmd.strip().lower() in self.EXIT_CMDS:
-                console.log("[magenta]Exiting client per user request[/]")
-                break
-
-            self.client.send_command(cmd)
-
+        with Live(self.layout, refresh_per_second=10, screen=True) as live:
+            while self.running:
+                # Update output panel
+                self.layout["output"].update(
+                    Panel(self.output_buffer, title="Server Output")
+                )
+                
+                # Update input panel
+                input_panel = Panel(
+                    Text(f">>> {self.input_buffer}", style="bold green"),
+                    title="Input",
+                )
+                self.layout["input"].update(input_panel)
+                
+                time.sleep(0.05)
+        
         self.client.close()
-        self._key_listener.stop()
+        self.key_listener.stop()
 
     def _on_key(self, key: keyboard.Key | keyboard.KeyCode) -> None:
-        """Optional: future non‑blocking shortcuts can be added here."""
-        pass  # currently no shortcuts required for the client
+        """Handle key presses for input and commands."""
+        try:
+            if key == keyboard.Key.enter:
+                self._send_command()
+            elif key == keyboard.Key.backspace:
+                self.input_buffer = self.input_buffer[:-1]
+            elif key == keyboard.Key.esc:
+                self.running = False
+            elif isinstance(key, keyboard.KeyCode) and key.char:
+                self.input_buffer += key.char
+        except AttributeError:
+            pass
+
+    def _send_command(self) -> None:
+        """Send the current input buffer to the server."""
+        if not self.input_buffer.strip():
+            return
+            
+        if self.input_buffer.strip().lower() in {"exit", "quit"}:
+            self.running = False
+            return
+            
+        self.client.send_command(self.input_buffer)
+        self.input_buffer = ""
 
 
 def main() -> None:
-    """Entry point for the command‑line client."""
+    """Entry point for the command-line client."""
     client = CommandClient()
     if not client.connect():
         sys.exit(1)
-    ui = ClientTUI(client)
-    ui.run()
+        
+    terminal = TerminalClient(client)
+    
+    # Set up output handling
+    def handle_output(line: str) -> None:
+        terminal.output_buffer.append(line)
+    
+    client.output_handler = handle_output
+    terminal.run()
 
 
 if __name__ == "__main__":
