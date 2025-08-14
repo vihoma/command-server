@@ -13,7 +13,6 @@ from __future__ import annotations
 import socket
 import threading
 import subprocess
-import signal
 from typing import List, Tuple
 
 from rich.console import Console
@@ -265,9 +264,6 @@ class CommandServer:
         # Launch TUI (starts key listener)
         ServerTUI(self, self.shutdown_event)
 
-        # Register signal handler for Ctrl‑C
-        signal.signal(signal.SIGINT, self._handle_sigint)
-
         console.log(f"[cyan]Listening on {self.host}:{self.port}[/]")
         try:
             while not self.shutdown_event.is_set():
@@ -279,14 +275,11 @@ class CommandServer:
                 handler = CommandHandler(conn, addr, self.stats, self.shutdown_event)
                 handler.start()
                 self._client_threads.append(handler)
+        except KeyboardInterrupt:
+            console.log("[red]KeyboardInterrupt – shutting down[/]")
+            self.shutdown_event.set()
         finally:
             self.stop()
-    # Unused arguments 'signum', 'frame'
-    #def _handle_sigint(self, signum: int, frame) -> None:  # pragma: no cover
-    def _handle_sigint(self) -> None:  # pragma: no cover
-        """Graceful shutdown on Ctrl‑C."""
-        console.log("[red]KeyboardInterrupt – shutting down[/]")
-        self.shutdown_event.set()
 
     def stop(self) -> None:
         """Close listening socket, wait for client threads and clean up resources."""
