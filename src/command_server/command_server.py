@@ -219,6 +219,10 @@ class ServerTUI:
                     self.shutdown_event.set()
                 elif key.char == "S":
                     self._print_stats()
+                # Add Ctrl+C handling for Windows
+                elif key.char == "\x03":  # Ctrl+C character code
+                    console.log("[red]Ctrl+C pressed – shutting down[/]")
+                    self.shutdown_event.set()
         except AttributeError:
             pass  # Non‑character key, ignore
 
