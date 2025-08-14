@@ -190,7 +190,7 @@ class TerminalClient:
                 style="bold cyan",
             )
         )
-        with Live(self.layout, refresh_per_second=10, screen=True) as live:
+        with Live(self.layout, refresh_per_second=10, screen=True):
             while self.running:
                 # Update output panel
                 self.layout["output"].update(
