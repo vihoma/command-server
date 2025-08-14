@@ -14,13 +14,11 @@ import socket
 import threading
 import subprocess
 import signal
-import sys
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 
 from pynput import keyboard
 

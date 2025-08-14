@@ -12,13 +12,11 @@ from __future__ import annotations
 import socket
 import sys
 import threading
-import time
 from typing import Optional
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
-from rich.text import Text
 
 from pynput import keyboard
 
