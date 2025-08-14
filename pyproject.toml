@@ -14,10 +14,9 @@ dependencies = [
     "rich (>=14.1.0,<15.0.0)"
 ]
 
-scripts = [
-    {command-server = "command_server.command_server:main"},
-    {command-client = "command_client.command_client:main"}
-]
+[project.scripts]
+command-server = "command_server.command_server:main"
+command-client = "command_client.command_client:main"
 
 [tool.poetry]
 packages = [
