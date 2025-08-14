@@ -14,10 +14,15 @@ dependencies = [
     "rich (>=14.1.0,<15.0.0)"
 ]
 
+scripts = [
+    {command-server = "command_server.command_server:main"},
+    {command-client = "command_client.command_client:main"}
+]
+
 [tool.poetry]
 packages = [
-  {include = "command_server", from = "src"},
-  {include = "command_client", from = "src"}
+    {include = "command_server", from = "src"},
+    {include = "command_client", from = "src"}
 ]
 
 
@@ -28,10 +33,6 @@ rich = "^14.1.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.4.1"
-
-[tool.poetry.scripts]
-command-server = "command_server.command_server:main"
-command-client = "command_client.command_client:main"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
