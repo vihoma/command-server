@@ -8,7 +8,7 @@ authors = [
     {name = "Aider with DeepSeek-R1"}
 ]
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.13"
 dependencies = [
     "pynput (>=1.8.1,<2.0.0)",
     "rich (>=14.1.0,<15.0.0)"
