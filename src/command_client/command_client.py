@@ -77,8 +77,10 @@ class CommandClient:
         self.sock: Optional[socket.socket] = None
         self.stats = ClientStats()
         self._recv_thread: Optional[threading.Thread] = None
+        self._running_lock = threading.Lock()
         self._running = threading.Event()
         self._running.set()
+        self._buffer_lock = threading.Lock()
         self._recv_buffer = ""
         self.output_handler: Optional[Callable[[str], None]] = None
 
@@ -102,16 +104,16 @@ class CommandClient:
 
     def close(self) -> None:
         """Close the connection and stop the receiver."""
-        self._running.clear()
+        with self._running_lock:
+            self._running.clear()
         if self.sock:
             try:
-                self.sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-            try:
-                self.sock.close()
-            except OSError:
-                pass
+                with self.sock:
+                    self.sock.shutdown(socket.SHUT_RDWR)
+            except OSError as exc:
+                console.log(f"[red]Error shutting down socket: {exc}[/]")
+            finally:
+                self.sock.close()  # Ensure the socket is closed
         if self._recv_thread:
             self._recv_thread.join(timeout=2.0)
         console.log("[magenta]Client disconnected[/]")
@@ -132,30 +134,34 @@ class CommandClient:
 
     def _receive_loop(self) -> None:
         """Background thread – receives data from the server."""
-        while self._running.is_set() and self.sock:
+        while True:
+            with self._running_lock:
+                if not (self._running.is_set() and self.sock):
+                    break
             try:
                 data = self.sock.recv(4096)
                 if not data:
                     console.log("[yellow]Server closed connection[/]")
-                    self._running.clear()
                     break
-                self._recv_buffer += data.decode(errors="replace")
+                with self._buffer_lock:
+                    self._recv_buffer += data.decode(errors="replace")
                 while "\n" in self._recv_buffer:
-                    line, self._recv_buffer = self._recv_buffer.split("\n", 1)
+                    with self._buffer_lock:
+                        line, self._recv_buffer = self._recv_buffer.split("\n", 1)
                     self._handle_line(line)
             except socket.timeout:
                 continue
             except OSError as exc:
                 console.log(f"[red]Receive error: {exc}[/]")
                 self.stats.errors += 1
-                self._running.clear()
                 break
 
     def _handle_line(self, line: str) -> None:
         """Process a single line received from the server."""
-        if self.output_handler:
-            self.output_handler(line + "\n")
-        self.stats.received_responses += 1
+        with self._buffer_lock:
+            if self.output_handler:
+                self.output_handler(line + "\n")
+            self.stats.received_responses += 1
 
 
 class TerminalClient:
@@ -207,7 +213,10 @@ class TerminalClient:
                 time.sleep(0.05)
         
         self.client.close()
-        self.key_listener.stop()
+        try:
+            self.key_listener.stop()
+        except Exception as exc:
+            console.log(f"[red]Error stopping key listener: {exc}[/]")
 
     def _on_key(self, key: keyboard.Key | keyboard.KeyCode) -> None:
         """Handle key presses for input and commands."""
@@ -215,24 +224,38 @@ class TerminalClient:
             if key == keyboard.Key.enter:
                 self._send_command()
             elif key == keyboard.Key.backspace:
-                self.input_buffer = self.input_buffer[:-1]
+                if len(self.input_buffer) > 0:
+                    self.input_buffer = self.input_buffer[:-1]
             elif key == keyboard.Key.esc:
                 self.running = False
-            elif isinstance(key, keyboard.KeyCode) and key.char:
-                self.input_buffer += key.char
-        except AttributeError:
-            pass
+            elif isinstance(key, keyboard.KeyCode):
+                try:
+                    char = key.char
+                    if char:  # Only add printable characters
+                        self.input_buffer += char
+                except AttributeError:
+                    pass  # Ignore non-character keys
+            else:
+                console.log(f"[yellow]Unsupported key: {key}[/]")
+        except Exception as exc:
+            console.log(f"[red]Error processing key: {exc}[/]")
 
     def _send_command(self) -> None:
         """Send the current input buffer to the server."""
-        if not self.input_buffer.strip():
+        cmd = self.input_buffer.strip()
+        if not cmd:
+            console.log("[yellow]Command cannot be empty[/]")
             return
-            
-        if self.input_buffer.strip().lower() in {"exit", "quit"}:
+
+        if cmd.lower() in {"exit", "quit"}:
             self.running = False
             return
-            
-        self.client.send_command(self.input_buffer)
+
+        if len(cmd) > 1024:  # Arbitrary limit to prevent too long commands
+            console.log("[yellow]Command too long[/]")
+            return
+
+        self.client.send_command(cmd)
         self.input_buffer = ""
 
 
