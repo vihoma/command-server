@@ -251,7 +251,7 @@ class TerminalClient:
             self.running = False
             return
 
-        if len(cmd) > 1024:  # Arbitrary limit to prevent too long commands
+        if len(cmd) > 2048:  # Arbitrary limit to prevent too long commands
             console.log("[yellow]Command too long[/]")
             return
 
