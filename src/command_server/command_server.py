@@ -13,6 +13,10 @@ from __future__ import annotations
 import socket
 import threading
 import subprocess
+import logging
+import shlex
+import time
+import psutil
 from typing import List, Tuple
 
 from rich.console import Console
@@ -25,6 +29,25 @@ from pynput import keyboard
 # Global console used by both the server and the TUI
 # --------------------------------------------------------------------------- #
 console = Console()
+
+# Set up logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s',
+    handlers=[
+        logging.FileHandler('server.log', encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Performance monitoring variables
+start_time = time.time()
+last_monitor_time = start_time
+
+# Command log file
+command_log_file = 'commands.log'
 
 
 class ServerStats:
@@ -161,18 +184,27 @@ class CommandHandler(threading.Thread):
             return "", f"Subprocess error: {exc}"
 
     def _send_output(self, out: str, err: str) -> None:
-        """Send command output (or error) back to the client."""
+        """Send command output (or error) back to the client.
+
+        This method sends the output or error of a command execution back
+        to the client. It handles any errors that occur during transmission.
+        """
         if err:
             payload = f"STDERR:\n{err}"
         else:
             payload = f"STDOUT:\n{out}"
         try:
             self.conn.sendall(payload.encode() + b"\n")
-        except OSError:
+        except OSError as exc:
+            logger.error(f"Error sending output to client {self.addr}: {exc}")
             self._running = False
 
     def _send_stats(self) -> None:
-        """Send a nicely formatted statistics string to the client."""
+        """Send a nicely formatted statistics string to the client.
+
+        This method sends server statistics to the client in response to
+        the "stats" command. It handles any errors that occur during transmission.
+        """
         conns, cmds, errs = self.stats.snapshot()
         stats_msg = (
             f"Connections: {conns}\n"
@@ -181,7 +213,8 @@ class CommandHandler(threading.Thread):
         )
         try:
             self.conn.sendall(b"STATS:\n" + stats_msg.encode() + b"\n")
-        except OSError:
+        except OSError as exc:
+            logger.error(f"Error sending statistics to client {self.addr}: {exc}")
             self._running = False
 
 
@@ -206,28 +239,36 @@ class ServerTUI:
         console.print(Panel("Command Server started on port 666", style="bold cyan"))
 
     def _on_key(self, key: keyboard.Key | keyboard.KeyCode) -> None:
-        """Handle non‑blocking key presses for shutdown and statistics display."""
+        """Handle non‑blocking key presses for shutdown and statistics display.
+
+        This method processes key presses from the user to trigger actions
+        like shutting down the server or displaying statistics.
+        """
         try:
             if isinstance(key, keyboard.Key):
                 # Special keys
                 if key == keyboard.Key.esc:
-                    console.log("[red]ESC pressed – shutting down[/]")
+                    logger.info("ESC pressed – shutting down")
                     self.shutdown_event.set()
             elif isinstance(key, keyboard.KeyCode):
                 if key.char == "Q":
-                    console.log("[red]Q pressed – shutting down[/]")
+                    logger.info("Q pressed – shutting down")
                     self.shutdown_event.set()
                 elif key.char == "S":
                     self._print_stats()
                 # Add Ctrl+C handling for Windows
                 elif key.char == "\x03":  # Ctrl+C character code
-                    console.log("[red]Ctrl+C pressed – shutting down[/]")
+                    logger.info("Ctrl+C pressed – shutting down")
                     self.shutdown_event.set()
         except AttributeError:
             pass  # Non‑character key, ignore
 
     def _print_stats(self) -> None:
-        """Print the server statistics to the console in a table format."""
+        """Print the server statistics to the console in a table format.
+
+        This method displays the current server statistics in a nicely formatted
+        table on the console.
+        """
         conns, cmds, errs = self.server.stats.snapshot()
         table = Table(title="Server Statistics", show_header=False)
         table.add_row("Connections", str(conns))
