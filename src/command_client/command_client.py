@@ -93,9 +93,7 @@ class CommandClient:
             self.sock.settimeout(0.5)
             console.log("[green]Connected to server[/]")
             # Start background receiver
-            self._recv_thread = threading.Thread(
-                target=self._receive_loop, daemon=True
-            )
+            self._recv_thread = threading.Thread(target=self._receive_loop, daemon=True)
             self._recv_thread.start()
             return True
         except (ConnectionRefusedError, socket.timeout) as exc:
@@ -202,24 +200,27 @@ class TerminalClient:
                 self.layout["output"].update(
                     Panel(self.output_buffer, title="Server Output")
                 )
-                
+
                 # Update input panel
                 input_panel = Panel(
                     Text(f">>> {self.input_buffer}", style="bold green"),
                     title="Input",
                 )
                 self.layout["input"].update(input_panel)
-                
+
                 time.sleep(0.05)
-        
+
         self.client.close()
         try:
             self.key_listener.stop()
         except Exception as exc:
             console.log(f"[red]Error stopping key listener: {exc}[/]")
 
-    def _on_key(self, key: keyboard.Key | keyboard.KeyCode) -> None:
+    def _on_key(self, key: keyboard.Key | keyboard.KeyCode | None) -> None:
         """Handle key presses for input and commands."""
+        if key is None:
+            return  # Ignore None keys
+
         try:
             if key == keyboard.Key.enter:
                 self._send_command()
@@ -264,13 +265,13 @@ def main() -> None:
     client = CommandClient()
     if not client.connect():
         sys.exit(1)
-        
+
     terminal = TerminalClient(client)
-    
+
     # Set up output handling
     def handle_output(line: str) -> None:
         terminal.output_buffer.append(line)
-    
+
     client.output_handler = handle_output
     terminal.run()
 

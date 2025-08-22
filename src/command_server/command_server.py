@@ -10,20 +10,42 @@ displays statistics with the **S** key.
 
 from __future__ import annotations
 
-import socket
-import threading
-import subprocess
 import logging
 import shlex
+import socket
+import subprocess
+import threading
 import time
-import psutil
-from typing import List, Tuple
+from typing import Any, Dict, List, Tuple
 
+import psutil
+from pynput import keyboard
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from pynput import keyboard
+# Default configuration
+DEFAULT_CONFIG = {
+    "host": "127.0.0.1",
+    "port": 666,
+    "max_command_length": 2048,
+    "max_recv_buffer": 4096,
+    "command_timeout": 30,
+    "socket_timeout": 1.0,
+    "log_file": "server.log",
+    "command_log_file": "commands.log",
+}
+
+# Socket constants
+SOCKET_RECV_CHUNK_SIZE = 4096
+SOCKET_TIMEOUT = 1.0
+SOCKET_CONNECTION_TIMEOUT = 0.5
+
+# Threading constants
+THREAD_JOIN_TIMEOUT = 2.0
+
+# Command execution constants
+COMMAND_TIMEOUT = 30
 
 # --------------------------------------------------------------------------- #
 # Global console used by both the server and the TUI
@@ -33,11 +55,11 @@ console = Console()
 # Set up logging
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s",
     handlers=[
-        logging.FileHandler('server.log', encoding='utf-8'),
-        logging.StreamHandler()
-    ]
+        logging.FileHandler("server.log", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
 )
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -47,7 +69,11 @@ start_time = time.time()
 last_monitor_time = start_time
 
 # Command log file
-command_log_file = 'commands.log'
+command_log_file = "commands.log"
+
+# Configuration constants
+MAX_COMMAND_LENGTH = DEFAULT_CONFIG["max_command_length"]
+MAX_RECV_BUFFER = DEFAULT_CONFIG["max_recv_buffer"]
 
 
 class ServerStats:
@@ -132,14 +158,27 @@ class CommandHandler(threading.Thread):
                     command = data.strip()
                     if not command:
                         continue
+
+                    # Validate command length
+                    if len(command) > MAX_COMMAND_LENGTH:
+                        self.conn.sendall(
+                            f"ERROR: Command too long (max {MAX_COMMAND_LENGTH} characters)\n".encode()
+                        )
+                        continue
+
                     if command.lower() == "stats":
                         self._send_stats()
                         continue
+
                     self.stats.incr_commands()
                     output, error = self._exec_shell(command)
                     self._send_output(output, error)
-        except Exception as exc:  # pragma: no cover – unexpected errors
+        except (socket.error, OSError, UnicodeDecodeError) as exc:
             console.log(f"[red]Handler error[/] {self.addr}: {exc}")
+            self.stats.incr_errors()
+        except Exception as exc:  # pragma: no cover – unexpected errors
+            console.log(f"[red]Unexpected error[/] {self.addr}: {exc}")
+            logger.exception("Unexpected error in command handler")
             self.stats.incr_errors()
         finally:
             console.log(f"[yellow]Client disconnected[/] {self.addr}")
@@ -147,11 +186,19 @@ class CommandHandler(threading.Thread):
     def _recv_line(self) -> str:
         """Read a line terminated by ``\n`` from the socket."""
         chunks: List[bytes] = []
+        total_bytes = 0
+
         while True:
             try:
-                chunk = self.conn.recv(4096)
+                chunk = self.conn.recv(SOCKET_RECV_CHUNK_SIZE)
                 if not chunk:
                     return ""
+
+                # Check buffer size limit
+                total_bytes += len(chunk)
+                if total_bytes > MAX_RECV_BUFFER:
+                    return ""  # Close connection on buffer overflow
+
                 chunks.append(chunk)
                 if b"\n" in chunk:
                     break
@@ -170,18 +217,31 @@ class CommandHandler(threading.Thread):
         counter.
         """
         try:
+            # Sanitize command to prevent shell injection
+            safe_cmd = shlex.quote(cmd)
             completed = subprocess.run(
-                cmd,
+                safe_cmd,
                 shell=True,
                 capture_output=True,
                 text=True,
                 check=True,
-                timeout=30,
+                timeout=COMMAND_TIMEOUT,
             )
             return completed.stdout, completed.stderr
+        except subprocess.TimeoutExpired:
+            self.stats.incr_errors()
+            return "", "ERROR: Command execution timed out"
+        except subprocess.CalledProcessError as exc:
+            self.stats.incr_errors()
+            return "", f"ERROR: Command failed with exit code {exc.returncode}"
         except subprocess.SubprocessError as exc:
             self.stats.incr_errors()
-            return "", f"Subprocess error: {exc}"
+            logger.error(f"Subprocess error: {exc}")
+            return "", "ERROR: Command execution failed"
+        except Exception as exc:
+            self.stats.incr_errors()
+            logger.exception("Unexpected error during command execution")
+            return "", "ERROR: Internal server error"
 
     def _send_output(self, out: str, err: str) -> None:
         """Send command output (or error) back to the client.
@@ -206,11 +266,7 @@ class CommandHandler(threading.Thread):
         the "stats" command. It handles any errors that occur during transmission.
         """
         conns, cmds, errs = self.stats.snapshot()
-        stats_msg = (
-            f"Connections: {conns}\n"
-            f"Commands executed: {cmds}\n"
-            f"Errors: {errs}"
-        )
+        stats_msg = f"Connections: {conns}\nCommands executed: {cmds}\nErrors: {errs}"
         try:
             self.conn.sendall(b"STATS:\n" + stats_msg.encode() + b"\n")
         except OSError as exc:
@@ -221,7 +277,9 @@ class CommandHandler(threading.Thread):
 class ServerTUI:
     """Rich based textual UI for the server."""
 
-    def __init__(self, server: "CommandServer", shutdown_event: threading.Event) -> None:
+    def __init__(
+        self, server: "CommandServer", shutdown_event: threading.Event
+    ) -> None:
         """
         Initialise the TUI and start a non‑blocking key listener.
 
@@ -238,12 +296,15 @@ class ServerTUI:
         self.listener.start()
         console.print(Panel("Command Server started on port 666", style="bold cyan"))
 
-    def _on_key(self, key: keyboard.Key | keyboard.KeyCode) -> None:
+    def _on_key(self, key: keyboard.Key | keyboard.KeyCode | None) -> None:
         """Handle non‑blocking key presses for shutdown and statistics display.
 
         This method processes key presses from the user to trigger actions
         like shutting down the server or displaying statistics.
         """
+        if key is None:
+            return  # Ignore None keys
+
         try:
             if isinstance(key, keyboard.Key):
                 # Special keys
@@ -280,19 +341,27 @@ class ServerTUI:
 class CommandServer:
     """Main server object – accepts connections and spawns handlers."""
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 666) -> None:
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 666,
+        config: Dict[str, Any] = DEFAULT_CONFIG,
+    ) -> None:
         """
         Initialise the server with the given host and port.
 
         Parameters
         ----------
         host:
-            Interface address to bind to (default ``127.0.0.1``).
+            Interface address to bind to. Defaults to config value.
         port:
-            TCP port on which the server listens (default ``666``).
+            TCP port on which the server listens. Defaults to config value.
+        config:
+            Configuration dictionary. Uses default config if not provided.
         """
-        self.host = host
-        self.port = port
+        self.config = config or DEFAULT_CONFIG
+        self.host = host or self.config["host"]
+        self.port = port or self.config["port"]
         self.stats = ServerStats()
         self.shutdown_event = threading.Event()
         self._client_threads: List[CommandHandler] = []
@@ -304,7 +373,7 @@ class CommandServer:
         self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._socket.bind((self.host, self.port))
         self._socket.listen()
-        self._socket.settimeout(1.0)  # allow periodic shutdown checks
+        self._socket.settimeout(SOCKET_TIMEOUT)  # allow periodic shutdown checks
 
         # Launch TUI (starts key listener)
         ServerTUI(self, self.shutdown_event)
@@ -316,7 +385,7 @@ class CommandServer:
                     conn, addr = self._socket.accept()
                 except socket.timeout:
                     continue
-                conn.settimeout(0.5)
+                conn.settimeout(SOCKET_CONNECTION_TIMEOUT)
                 handler = CommandHandler(conn, addr, self.stats, self.shutdown_event)
                 handler.start()
                 self._client_threads.append(handler)
@@ -335,8 +404,16 @@ class CommandServer:
                 self._socket.close()
             except OSError:
                 pass
+        # Clean up finished threads to prevent memory leaks
+        active_threads = []
         for th in self._client_threads:
-            th.join(timeout=2.0)
+            if th.is_alive():
+                th.join(timeout=THREAD_JOIN_TIMEOUT)
+                if th.is_alive():
+                    active_threads.append(th)
+            # Threads that are no longer alive are automatically garbage collected
+
+        self._client_threads = active_threads
         console.log("[green]Server stopped cleanly[/]")
 
 
