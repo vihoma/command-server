@@ -32,8 +32,8 @@ DEFAULT_CONFIG = {
     "max_recv_buffer": 4096,
     "command_timeout": 30,
     "socket_timeout": 1.0,
-    "log_file": "server.log",
-    "command_log_file": "commands.log",
+    "log_file": "~\.command-server\server.log",
+    "command_log_file": "~\.command-server\commands.log",
 }
 
 # Socket constants
