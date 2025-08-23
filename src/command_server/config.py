@@ -23,8 +23,8 @@ def load_config() -> Dict[str, Any]:
         "max_recv_buffer": int(os.environ.get("MAX_RECV_BUFFER", "4096")),
         "command_timeout": int(os.environ.get("COMMAND_TIMEOUT", "30")),
         "socket_timeout": float(os.environ.get("SOCKET_TIMEOUT", "1.0")),
-        "log_file": os.environ.get("LOG_FILE", "~\.command-server\server.log"),
-        "command_log_file": os.environ.get("COMMAND_LOG_FILE", "~\.command-server\commands.log"),
+        "log_file": os.environ.get("LOG_FILE", "~\\.command-server\\server.log"),
+        "command_log_file": os.environ.get("COMMAND_LOG_FILE", "~\\.command-server\\commands.log"),
     }
 
     return config

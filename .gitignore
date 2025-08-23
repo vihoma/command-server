@@ -6,3 +6,4 @@
 .*.env
 .aider*
 desktop.ini
+**/**/*.log
