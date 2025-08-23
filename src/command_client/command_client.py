@@ -8,9 +8,12 @@ Rich‑based terminal UI for interactive use.
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import socket
 import sys
 import threading
+from pathlib import Path
 from typing import Callable, Optional
 
 from rich.console import Console
@@ -29,6 +32,8 @@ DEFAULT_PORT = 666
 DEFAULT_TIMEOUT = 5.0
 MAX_CMD_LENGTH = 2048
 UI_REFRESH_RATE = 10  # Hz
+HISTORY_FILENAME = ".command_server_history"
+MAX_HISTORY_SIZE = 100
 
 # --------------------------------------------------------------------------- #
 # Global console used by the client UI
@@ -227,6 +232,9 @@ class TerminalClient:
         self.key_listener = keyboard.Listener(on_press=self._on_key)
         self.key_listener.start()
         self.running = True
+        self.command_history: list[str] = []
+        self.history_position = -1
+        self._load_history()  # Load history from file
 
     def run(self) -> None:
         """Main terminal loop."""
@@ -251,6 +259,7 @@ class TerminalClient:
                     )
                 )
         # Cleanup after loop ends
+        self._save_history()  # Ensure history is saved on exit
         self.client.close()
         self.key_listener.stop()
 
@@ -268,6 +277,10 @@ class TerminalClient:
                 self.running = False
             elif key == keyboard.Key.space:
                 self.input_buffer += " "
+            elif key == keyboard.Key.up:
+                self._navigate_history(-1)
+            elif key == keyboard.Key.down:
+                self._navigate_history(1)
             elif isinstance(key, keyboard.KeyCode):
                 char = key.char
                 if char and char.isprintable():
@@ -277,6 +290,71 @@ class TerminalClient:
         except Exception as exc:
             console.log(f"[red]Error processing key: {exc}[/]")
             raise
+
+    def _navigate_history(self, direction: int) -> None:
+        """Navigate through command history.
+
+        Parameters
+        ----------
+        direction : int
+            -1 for up (older commands), 1 for down (newer commands).
+        """
+        if not self.command_history:
+            return
+
+        # Save current input if we're starting history navigation
+        if self.history_position == -1 and self.input_buffer:
+            self._saved_input = self.input_buffer
+
+        # Calculate new position
+        new_position = self.history_position + direction
+
+        # Handle bounds
+        if new_position < -1:
+            new_position = -1
+        elif new_position >= len(self.command_history):
+            new_position = len(self.command_history) - 1
+
+        # Update input buffer based on position
+        if new_position == -1:
+            self.input_buffer = getattr(self, "_saved_input", "")
+        else:
+            self.input_buffer = self.command_history[new_position]
+
+        self.history_position = new_position
+
+    def _get_history_file_path(self) -> Path:
+        """Get platform-agnostic path to history file."""
+        home_dir = Path.home()
+        return home_dir / HISTORY_FILENAME
+
+    def _load_history(self) -> None:
+        """Load command history from file."""
+        history_file = self._get_history_file_path()
+        try:
+            if history_file.exists():
+                with open(history_file, "r", encoding="utf-8") as f:
+                    self.command_history = json.load(f)
+                    # Ensure we don't exceed max size
+                    if len(self.command_history) > MAX_HISTORY_SIZE:
+                        self.command_history = self.command_history[-MAX_HISTORY_SIZE:]
+        except (json.JSONDecodeError, OSError) as e:
+            console.log(f"[yellow]Failed to load command history: {e}[/]")
+            self.command_history = []
+
+    def _save_history(self) -> None:
+        """Save command history to file."""
+        if not self.command_history:
+            return
+
+        history_file = self._get_history_file_path()
+        try:
+            # Create parent directory if it doesn't exist
+            history_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(history_file, "w", encoding="utf-8") as f:
+                json.dump(self.command_history, f, ensure_ascii=False)
+        except OSError as e:
+            console.log(f"[yellow]Failed to save command history: {e}[/]")
 
     def _send_command(self) -> None:
         """Send the current input buffer to the server."""
@@ -293,8 +371,17 @@ class TerminalClient:
             console.log("[yellow]Command too long[/]")
             return
 
+        # Add to command history if not empty and not a duplicate of last command
+        if cmd and (not self.command_history or cmd != self.command_history[-1]):
+            self.command_history.append(cmd)
+            # Limit history size to prevent memory issues
+            if len(self.command_history) > MAX_HISTORY_SIZE:
+                self.command_history.pop(0)
+            self._save_history()  # Save after modification
+
         self.client.send_command(cmd)
         self.input_buffer = ""
+        self.history_position = -1
 
 
 def _parse_args() -> argparse.Namespace:
