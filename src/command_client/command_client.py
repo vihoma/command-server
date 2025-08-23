@@ -266,6 +266,8 @@ class TerminalClient:
                 self.input_buffer = self.input_buffer[:-1]
             elif key == keyboard.Key.esc:
                 self.running = False
+            elif key == keyboard.Key.space:
+                self.input_buffer += " "
             elif isinstance(key, keyboard.KeyCode):
                 char = key.char
                 if char and char.isprintable():
