@@ -33,7 +33,7 @@ DEFAULT_TIMEOUT = 5.0
 MAX_CMD_LENGTH = 2048
 UI_REFRESH_RATE = 10  # Hz
 HISTORY_FILENAME = ".command_server_history"
-MAX_HISTORY_SIZE = 100
+MAX_HISTORY_SIZE = 1000
 
 # --------------------------------------------------------------------------- #
 # Global console used by the client UI
