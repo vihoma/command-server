@@ -18,7 +18,6 @@ import threading
 import time
 from typing import Any, Dict, List, Tuple
 
-import psutil
 from pynput import keyboard
 from rich.console import Console
 from rich.panel import Panel
@@ -216,46 +215,46 @@ class CommandHandler(threading.Thread):
         are caught and reported as ``stderr`` while also updating the error
         counter.
         """
+        # Parse command into executable and arguments
         try:
-            # Parse command into executable and arguments
-            try:
-                parts = shlex.split(cmd)
-            except ValueError:
-                return "", "ERROR: Invalid command syntax"
+            parts = shlex.split(cmd)
+        except ValueError:
+            return "", "ERROR: Invalid command syntax"
 
-            if not parts:
-                return "", "ERROR: Empty command"
+        if not parts:
+            return "", "ERROR: Empty command"
 
-            executable = parts[0]
-            args = parts[1:] if len(parts) > 1 else []
+        executable = parts[0]
+        args = parts[1:] if len(parts) > 1 else []
 
-            # Validate executable against whitelist
-            allowed_commands = {
-                "ls",
-                "lsd",
-                "eza",
-                "tree",
-                "cd",
-                "pwd",
-                "echo",
-                "cat",
-                "grep",
-                "find",
-                "ps",
-                "top",
-                "df",
-                "du",
-                "dust",
-                "free",
-                "whoami",
-                "date",
-                "uname",
-                "stat",
-            }
+        # Validate executable against whitelist
+        allowed_commands = {
+            "ls",
+            "lsd",
+            "eza",
+            "tree",
+            "cd",
+            "pwd",
+            "echo",
+            "cat",
+            "grep",
+            "find",
+            "ps",
+            "top",
+            "df",
+            "du",
+            "dust",
+            "free",
+            "whoami",
+            "date",
+            "uname",
+            "stat",
+        }
 
-            if executable not in allowed_commands:
-                return "", f"ERROR: Command '{executable}' not allowed"
+        if executable not in allowed_commands:
+            return "", f"ERROR: Command '{executable}' not allowed"
 
+        try:
             # Execute safely without shell=True
             completed = subprocess.run(
                 [executable] + args,
@@ -272,6 +271,9 @@ class CommandHandler(threading.Thread):
         except subprocess.CalledProcessError as exc:
             self.stats.incr_errors()
             return "", f"ERROR: Command failed with exit code {exc.returncode}"
+        except FileNotFoundError:
+            self.stats.incr_errors()
+            return "", f"ERROR: Command '{executable}' not found"
         except subprocess.SubprocessError as exc:
             self.stats.incr_errors()
             logger.error(f"Subprocess error: {exc}")

@@ -4,8 +4,9 @@
 - Install dependencies: `poetry install`
 - Run server: `poetry run python -m command_server`
 - Run client: `poetry run python -m command_client`
-- Run all tests: `poetry run pytest`
-- Run single test: `poetry run pytest -k "test_name"`
+- Tests are located in the `tests` directory
+- Run all tests: `poetry run pytest` or `poetry run pytest tests/`
+- Run single test: `poetry run pytest tests/test_server.py`
 
 ## Code Style Guidelines
 ### General
