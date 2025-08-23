@@ -217,11 +217,49 @@ class CommandHandler(threading.Thread):
         counter.
         """
         try:
-            # Sanitize command to prevent shell injection
-            safe_cmd = shlex.quote(cmd)
+            # Parse command into executable and arguments
+            try:
+                parts = shlex.split(cmd)
+            except ValueError:
+                return "", "ERROR: Invalid command syntax"
+
+            if not parts:
+                return "", "ERROR: Empty command"
+
+            executable = parts[0]
+            args = parts[1:] if len(parts) > 1 else []
+
+            # Validate executable against whitelist
+            allowed_commands = {
+                "ls",
+                "lsd",
+                "eza",
+                "tree",
+                "cd",
+                "pwd",
+                "echo",
+                "cat",
+                "grep",
+                "find",
+                "ps",
+                "top",
+                "df",
+                "du",
+                "dust",
+                "free",
+                "whoami",
+                "date",
+                "uname",
+                "stat",
+            }
+
+            if executable not in allowed_commands:
+                return "", f"ERROR: Command '{executable}' not allowed"
+
+            # Execute safely without shell=True
             completed = subprocess.run(
-                safe_cmd,
-                shell=True,
+                [executable] + args,
+                shell=False,
                 capture_output=True,
                 text=True,
                 check=True,
