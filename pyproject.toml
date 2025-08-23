@@ -1,11 +1,11 @@
 [project]
 name = "command-server"
-version = "0.1.0"
+version = "0.2.0"
 description = "A command server for the bot"
 authors = [
     {name = "Lord Sohron",email = "29570082+vihoma@users.noreply.github.com"},
     {name = "Llama.cpp with gpt-oss-120b"},
-    {name = "Aider with DeepSeek-R1"}
+    {name = "Aider with DeepSeek"}
 ]
 readme = "README.md"
 requires-python = ">=3.13"
