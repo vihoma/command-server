@@ -32,8 +32,8 @@ DEFAULT_CONFIG = {
     "max_recv_buffer": 4096,
     "command_timeout": 30,
     "socket_timeout": 1.0,
-    "log_file": "~\\.command-server\\server.log",
-    "command_log_file": "~\\.command-server\\commands.log",
+    "log_file": "server.log",
+    "command_log_file": "commands.log",
 }
 
 # Socket constants
@@ -57,7 +57,7 @@ logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s",
     handlers=[
-        logging.FileHandler("~\\.command-server\\server.log", encoding="utf-8"),
+        logging.FileHandler("server.log", encoding="utf-8"),
         logging.StreamHandler(),
     ],
 )
@@ -69,7 +69,7 @@ start_time = time.time()
 last_monitor_time = start_time
 
 # Command log file
-command_log_file = "~\\.command-server\\commands.log"
+command_log_file = "commands.log"
 
 # Configuration constants
 MAX_COMMAND_LENGTH = DEFAULT_CONFIG["max_command_length"]
