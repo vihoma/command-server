@@ -2,7 +2,7 @@
 """
 Command Server
 
-Listens on TCP port 666, executes received commands in the system default
+Listens on TCP port (configurable), executes received commands in the system default
 shell and returns the command output.  The server prints a Rich based TUI,
 collects statistics and can be stopped with Ctrl‑C, **ESC**, **Q** or
 displays statistics with the **S** key.
@@ -11,6 +11,7 @@ displays statistics with the **S** key.
 from __future__ import annotations
 
 import logging
+import os
 import shlex
 import socket
 import subprocess
@@ -22,6 +23,7 @@ from pynput import keyboard
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+
 
 # Default configuration
 DEFAULT_CONFIG = {
@@ -37,14 +39,14 @@ DEFAULT_CONFIG = {
 
 # Socket constants
 SOCKET_RECV_CHUNK_SIZE = 4096
-SOCKET_TIMEOUT = 1.0
+SOCKET_TIMEOUT = DEFAULT_CONFIG["socket_timeout"]
 SOCKET_CONNECTION_TIMEOUT = 0.5
 
 # Threading constants
 THREAD_JOIN_TIMEOUT = 2.0
 
 # Command execution constants
-COMMAND_TIMEOUT = 30
+COMMAND_TIMEOUT = DEFAULT_CONFIG["command_timeout"]
 
 # --------------------------------------------------------------------------- #
 # Global console used by both the server and the TUI
@@ -56,7 +58,7 @@ logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s",
     handlers=[
-        logging.FileHandler("server.log", encoding="utf-8"),
+        logging.FileHandler(DEFAULT_CONFIG["log_file"], encoding="utf-8"),
         logging.StreamHandler(),
     ],
 )
@@ -68,7 +70,7 @@ start_time = time.time()
 last_monitor_time = start_time
 
 # Command log file
-command_log_file = "commands.log"
+command_log_file = DEFAULT_CONFIG["command_log_file"]
 
 # Configuration constants
 MAX_COMMAND_LENGTH = DEFAULT_CONFIG["max_command_length"]
@@ -238,6 +240,8 @@ class CommandHandler(threading.Thread):
             "echo",
             "cat",
             "grep",
+            "rg",
+            "ug",
             "find",
             "ps",
             "top",
@@ -334,7 +338,11 @@ class ServerTUI:
         self.shutdown_event = shutdown_event
         self.listener = keyboard.Listener(on_press=self._on_key)
         self.listener.start()
-        console.print(Panel("Command Server started on port 666", style="bold cyan"))
+        console.print(
+            Panel(
+                f"Command Server started on port {self.server.port}", style="bold cyan"
+            )
+        )
 
     def _on_key(self, key: keyboard.Key | keyboard.KeyCode | None) -> None:
         """Handle non‑blocking key presses for shutdown and statistics display.
@@ -383,9 +391,9 @@ class CommandServer:
 
     def __init__(
         self,
-        host: str = "127.0.0.1",
-        port: int = 666,
-        config: Dict[str, Any] = DEFAULT_CONFIG,
+        host: str | None = None,
+        port: int | None = None,
+        config: Dict[str, Any] | None = None,
     ) -> None:
         """
         Initialise the server with the given host and port.
@@ -399,7 +407,42 @@ class CommandServer:
         config:
             Configuration dictionary. Uses default config if not provided.
         """
-        self.config = config or DEFAULT_CONFIG
+        # Use provided config or load from environment variables
+        if config is not None:
+            self.config = config
+        else:
+            # Load configuration from environment variables with fallback to defaults
+            self.config = {
+                "host": os.environ.get("COMMAND_SERVER_HOST", DEFAULT_CONFIG["host"]),
+                "port": int(
+                    os.environ.get("COMMAND_SERVER_PORT", str(DEFAULT_CONFIG["port"]))
+                ),
+                "max_command_length": int(
+                    os.environ.get(
+                        "MAX_COMMAND_LENGTH", str(DEFAULT_CONFIG["max_command_length"])
+                    )
+                ),
+                "max_recv_buffer": int(
+                    os.environ.get(
+                        "MAX_RECV_BUFFER", str(DEFAULT_CONFIG["max_recv_buffer"])
+                    )
+                ),
+                "command_timeout": int(
+                    os.environ.get(
+                        "COMMAND_TIMEOUT", str(DEFAULT_CONFIG["command_timeout"])
+                    )
+                ),
+                "socket_timeout": float(
+                    os.environ.get(
+                        "SOCKET_TIMEOUT", str(DEFAULT_CONFIG["socket_timeout"])
+                    )
+                ),
+                "log_file": os.environ.get("LOG_FILE", DEFAULT_CONFIG["log_file"]),
+                "command_log_file": os.environ.get(
+                    "COMMAND_LOG_FILE", DEFAULT_CONFIG["command_log_file"]
+                ),
+            }
+
         self.host = host or self.config["host"]
         self.port = port or self.config["port"]
         self.stats = ServerStats()
