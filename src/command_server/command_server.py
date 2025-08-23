@@ -57,7 +57,7 @@ logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s",
     handlers=[
-        logging.FileHandler("server.log", encoding="utf-8"),
+        logging.FileHandler("~\\.command-server\\server.log", encoding="utf-8"),
         logging.StreamHandler(),
     ],
 )
@@ -69,7 +69,7 @@ start_time = time.time()
 last_monitor_time = start_time
 
 # Command log file
-command_log_file = "commands.log"
+command_log_file = "~\\.command-server\\commands.log"
 
 # Configuration constants
 MAX_COMMAND_LENGTH = DEFAULT_CONFIG["max_command_length"]
