@@ -1,10 +1,11 @@
 [project]
 name = "command-server"
 version = "0.2.0"
-description = "A command server for the bot"
+description = "A command server for the both of us..."
 authors = [
     {name = "Lord Sohron",email = "29570082+vihoma@users.noreply.github.com"},
-    {name = "Llama.cpp with gpt-oss-120b"},
+    {name = "Llama.cpp with various"},
+    {name = "opencode with various"},
     {name = "Aider with DeepSeek"}
 ]
 readme = "README.md"
