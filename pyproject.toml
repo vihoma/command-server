@@ -1,7 +1,7 @@
 [project]
 name = "command-server"
 version = "0.2.0"
-description = "A command server for the both of us..."
+description = "A command server for the both of us (an academic excersise)..."
 authors = [
     {name = "Lord Sohron",email = "29570082+vihoma@users.noreply.github.com"},
     {name = "Llama.cpp with various"},
